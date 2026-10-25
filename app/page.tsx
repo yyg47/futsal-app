@@ -730,6 +730,12 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
+// 💡 방장 유저 ID 목록 (본인의 Supabase User ID 지정)
+const ADMIN_USER_IDS = [
+  "1e749510-834a-48c3-afba-e373a992eef2",
+  "643e4072-716f-4b98-96b2-139c0c7835b6",
+];
+
 interface User {
   id: string;
   name: string;
@@ -748,7 +754,7 @@ export default function FutsalHome() {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
-  const [isAdmin, setIsAdmin] = useState<boolean>(true);
+  const [isAdmin, setIsAdmin] = useState<boolean>(false);
 
   useEffect(() => {
     checkUserAndSession();
@@ -756,8 +762,11 @@ export default function FutsalHome() {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
-      setCurrentUser(session?.user ?? null);
-      if (session?.user && currentSessionId) {
+      const user = session?.user ?? null;
+      setCurrentUser(user);
+      setIsAdmin(!!user && ADMIN_USER_IDS.includes(user.id));
+
+      if (user && currentSessionId) {
         fetchAttendees(currentSessionId);
       }
     });
@@ -767,11 +776,32 @@ export default function FutsalHome() {
     };
   }, [currentSessionId]);
 
-  // 예시: 방장 유저 ID 목록 지정
-  const ADMIN_USER_IDS = [
-    "1e749510-834a-48c3-afba-e373a992eef2",
-    "643e4072-716f-4b98-96b2-139c0c7835b6",
-  ];
+  // 💡 실시간 명단 동기화 (방장이 명단을 지우거나 추가할 때 자동 업데이트)
+  useEffect(() => {
+    if (!currentSessionId) return;
+
+    fetchAttendees(currentSessionId);
+
+    const channel = supabase
+      .channel("session_attendees_changes")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "session_attendees",
+          filter: `session_id=eq.${currentSessionId}`,
+        },
+        () => {
+          fetchAttendees(currentSessionId);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [currentSessionId]);
 
   const checkUserAndSession = async () => {
     setLoading(true);
@@ -779,14 +809,25 @@ export default function FutsalHome() {
     const user = data.session?.user ?? null;
     setCurrentUser(user);
 
-    // 현재 로그인한 유저가 방장 명단에 있는지 체크
+    // 로그인한 유저가 방장 명단에 있는지 체크
     if (user && ADMIN_USER_IDS.includes(user.id)) {
       setIsAdmin(true);
     } else {
-      setIsAdmin(false); // 일반 유저는 관리자 버튼 안 보임
+      setIsAdmin(false);
     }
 
-    // ... 이하 세션 불러오기 로직 동일
+    // 가장 최근 세션 가져오기
+    const { data: sessionData } = await supabase
+      .from("sessions")
+      .select("id")
+      .order("date", { ascending: false })
+      .limit(1)
+      .single();
+
+    if (sessionData) {
+      setCurrentSessionId(sessionData.id);
+    }
+    setLoading(false);
   };
 
   const fetchAttendees = async (sessionId: string) => {
@@ -795,8 +836,8 @@ export default function FutsalHome() {
       .select(`id, payment_status, user_id, users ( id, name, phone )`)
       .eq("session_id", sessionId);
 
-    if (!error) {
-      setAttendees((data as unknown as Attendee[]) || []);
+    if (!error && data) {
+      setAttendees(data as unknown as Attendee[]);
     }
   };
 
@@ -813,6 +854,7 @@ export default function FutsalHome() {
   const handleLogout = async () => {
     await supabase.auth.signOut();
     setCurrentUser(null);
+    setIsAdmin(false);
     window.location.reload();
   };
 
@@ -856,7 +898,7 @@ export default function FutsalHome() {
     });
 
     if (error) {
-      alert("참가 신청 중 오류가 발생했습니다.");
+      alert("참가 신청 중 오류가 발생했습니다: " + error.message);
     } else {
       alert("참가 신청이 완료되었습니다! 🎉");
       fetchAttendees(currentSessionId);
@@ -877,13 +919,13 @@ export default function FutsalHome() {
 
   return (
     <main className="min-h-screen bg-gray-50 p-4 max-w-md mx-auto pb-28">
+      {/* 상단 모임 정보 카드 */}
       <div className="bg-emerald-600 text-white p-5 rounded-2xl shadow-md mb-6 relative">
         <div className="flex items-center justify-between">
           <span className="bg-emerald-500 text-xs px-2.5 py-1 rounded-full font-semibold">
             매주 화요일 정기 풋살
           </span>
           <div className="flex items-center gap-2">
-            {/* 방장(Admin)에게만 보이는 관리자 센터 버튼 */}
             {isAdmin && (
               <Link
                 href="/admin"
@@ -911,15 +953,14 @@ export default function FutsalHome() {
         </div>
 
         <h1 className="text-2xl font-bold mt-2">이번 주 화요일 풋살 ⚽</h1>
-        <p className="text-emerald-100 text-sm mt-1">
-          장소: 실내 풋살장 / 시간: 20:00 ~ 22:00
-        </p>
+        <p className="text-emerald-100 text-sm mt-1">시간: 20:00 ~ 22:00</p>
         <div className="mt-4 flex items-center justify-between text-sm border-t border-emerald-500 pt-3">
           <span>신청 인원</span>
           <span className="font-bold text-lg">{attendees.length} / 15명</span>
         </div>
       </div>
 
+      {/* 네비게이션 */}
       <div className="grid grid-cols-2 gap-2 mb-6">
         <Link
           href="/draft"
@@ -941,6 +982,7 @@ export default function FutsalHome() {
         </Link>
       </div>
 
+      {/* 참가 신청 명단 */}
       <div className="bg-white rounded-2xl p-4 shadow-sm mb-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-bold text-gray-800 flex items-center gap-2">
@@ -972,7 +1014,7 @@ export default function FutsalHome() {
                     {index + 1}
                   </span>
                   <span className="font-semibold text-gray-700">
-                    {item.users?.name || "카카오 유저"}
+                    {item.users?.name || "유저"}
                   </span>
                 </div>
                 <button
