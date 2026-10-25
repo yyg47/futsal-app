@@ -770,7 +770,7 @@ export default function FutsalHome() {
   // 예시: 방장 유저 ID 목록 지정
   const ADMIN_USER_IDS = [
     "1e749510-834a-48c3-afba-e373a992eef2",
-    // "643e4072-716f-4b98-96b2-139c0c7835b6",
+    "643e4072-716f-4b98-96b2-139c0c7835b6",
   ];
 
   const checkUserAndSession = async () => {
