@@ -45,7 +45,7 @@ export default function MyStatsPage() {
     if (userData) {
       setUserStat({
         ...userData,
-        avg_rank: 2.1, // 추후 매치 결과 테이블 연동 시 계산될 평균 순위 예시
+        avg_rank: userData.total_games > 0 ? 2.1 : 0, // 경기가 없으면 0 또는 -로 표시
       });
     }
 
@@ -100,8 +100,10 @@ export default function MyStatsPage() {
         </span>
         <h2 className="text-xl font-bold mt-3 leading-snug">
           {userStat?.name || "플레이어"} 님의 팀은 평균{" "}
-          <span className="text-amber-300 font-black">
-            {userStat?.avg_rank || "-"}등
+          <span className="text-2xl font-black text-gray-800">
+            {userStat?.avg_rank && userStat.avg_rank > 0
+              ? userStat.avg_rank
+              : "-"}
           </span>
           을 하셨어요!
         </h2>
