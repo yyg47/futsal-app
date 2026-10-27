@@ -172,27 +172,46 @@ export default function ResultPage() {
     }
 
     try {
-      const { data: sessionData } = await supabase
+      // 1. 가장 최근 세션 가져오기
+      const { data: sessionData, error: sessionError } = await supabase
         .from("sessions")
         .select("id")
         .order("created_at", { ascending: false })
         .limit(1)
         .single();
 
-      if (!sessionData) {
-        alert("진행 중인 경기 세션이 없습니다!");
+      if (sessionError || !sessionData) {
+        alert("진행 중인 경기 세션이 없습니다! 세션을 먼저 확인해주세요.");
         return;
       }
 
       const sessionId = sessionData.id;
-      console.log("📌 현재 세션 ID:", sessionId);
+      console.log("📌 결과 저장 대상 세션 ID:", sessionId);
 
-      // 1. 빨래 당번 유저 찾기
+      // 2. 해당 세션에 속한 팀 정보 가져오기
+      const { data: teamData, error: teamFetchError } = await supabase
+        .from("teams")
+        .select("id, team_name")
+        .eq("session_id", sessionId);
+
+      console.log("📌 해당 세션의 팀 목록:", teamData, "에러:", teamFetchError);
+
+      if (!teamData || teamData.length === 0) {
+        alert(
+          "⚠️ 이 세션에 등록된 팀이 없습니다! 디지털 드래프트 페이지에서 팀을 먼저 생성하고 저장해주세요."
+        );
+        return;
+      }
+
+      const teamMap: Record<string, string> = {};
+      teamData.forEach((t) => {
+        teamMap[t.team_name] = t.id;
+      });
+
+      // 3. 빨래 당번 유저 찾기
       const selectedUser = attendees.find(
         (a) => a.users?.name === laundryPerson
       );
-      console.log("📌 선택된 빨래 당번 유저:", selectedUser);
-
       if (selectedUser) {
         await supabase
           .from("sessions")
@@ -200,135 +219,98 @@ export default function ResultPage() {
           .eq("id", sessionId);
       }
 
-      // 2. 팀 정보 가져오기
-      const { data: teamData } = await supabase
-        .from("teams")
-        .select("id, team_name")
-        .eq("session_id", sessionId);
+      // 4. 매치 결과 저장
+      for (let i = 0; i < matches.length; i++) {
+        const m = matches[i];
+        if (!m.winner) continue;
 
-      console.log("📌 DB에서 가져온 팀 목록:", teamData);
-
-      if (teamData && teamData.length > 0) {
-        const teamMap: Record<string, string> = {};
-        teamData.forEach((t) => {
-          teamMap[t.team_name] = t.id;
-        });
-
-        // 3. 매치 결과 저장
-        for (let i = 0; i < matches.length; i++) {
-          const m = matches[i];
-          if (!m.winner) continue;
-
-          let winnerTeamId = null;
-          if (m.winner !== "무승부") {
-            winnerTeamId = teamMap[m.winner] || null;
-          }
-
-          await supabase.from("matches").insert({
-            session_id: sessionId,
-            team1_id: teamMap[m.team1],
-            team2_id: teamMap[m.team2],
-            winner_team_id: winnerTeamId,
-            match_order: m.id,
-          });
+        let winnerTeamId = null;
+        if (m.winner !== "무승부") {
+          winnerTeamId = teamMap[m.winner] || null;
         }
 
-        // 4. 팀별 최종 순위(rankMap) 생성 및 teams 테이블 rank 저장
-        const rankMap: Record<string, number> = {};
-        sortedTeams.forEach(([teamName], idx) => {
-          rankMap[teamName] = idx + 1; // 1등, 2등, 3등
+        await supabase.from("matches").insert({
+          session_id: sessionId,
+          team1_id: teamMap[m.team1],
+          team2_id: teamMap[m.team2],
+          winner_team_id: winnerTeamId,
+          match_order: m.id,
         });
+      }
 
-        console.log("📌 계산된 순위 맵(rankMap):", rankMap);
+      // 5. 팀별 최종 순위(rankMap) 생성 및 teams 테이블 rank 저장
+      const rankMap: Record<string, number> = {};
+      sortedTeams.forEach(([teamName], idx) => {
+        rankMap[teamName] = idx + 1; // 1등, 2등, 3등
+      });
 
-        for (const [teamName, rank] of Object.entries(rankMap)) {
-          const teamId = teamMap[teamName];
-          if (teamId) {
-            const { error: rankError } = await supabase
-              .from("teams")
-              .update({ rank })
-              .eq("id", teamId);
-            if (rankError)
-              console.error(`팀 ${teamName} rank 업데이트 에러:`, rankError);
-          }
+      console.log("📌 계산된 순위 맵(rankMap):", rankMap);
+
+      for (const t of teamData) {
+        const calculatedRank = rankMap[t.team_name];
+        if (calculatedRank) {
+          await supabase
+            .from("teams")
+            .update({ rank: calculatedRank })
+            .eq("id", t.id);
         }
+      }
 
-        // 5. 각 팀 멤버들의 픽 순서 보정 레이팅 및 빨래 횟수 자동 업데이트
-        for (const t of teamData) {
-          const teamRank = rankMap[t.team_name] || 2;
+      // 6. 각 팀 멤버들의 픽 순서 보정 레이팅 및 빨래 횟수 자동 업데이트
+      for (const t of teamData) {
+        const teamRank = rankMap[t.team_name] || 2;
 
-          const { data: teamMembers, error: memberError } = await supabase
-            .from("team_members")
-            .select("user_id, pick_order")
-            .eq("team_id", t.id)
-            .order("pick_order", { ascending: true });
+        const { data: teamMembers } = await supabase
+          .from("team_members")
+          .select("user_id, pick_order")
+          .eq("team_id", t.id)
+          .order("pick_order", { ascending: true });
 
-          console.log(
-            `📌 팀 [${t.team_name}]의 멤버 조회 결과:`,
-            teamMembers,
-            "에러:",
-            memberError
+        console.log(`📌 팀 [${t.team_name}] 멤버 조회 결과:`, teamMembers);
+
+        if (!teamMembers || teamMembers.length === 0) continue;
+        const totalTeamSize = teamMembers.length;
+
+        for (const member of teamMembers) {
+          if (!member.user_id) continue;
+
+          const ratingChange = calculateInternalRatingChange(
+            teamRank,
+            member.pick_order,
+            totalTeamSize
           );
 
-          if (!teamMembers || teamMembers.length === 0) continue;
-          const totalTeamSize = teamMembers.length;
+          const { data: userData } = await supabase
+            .from("users")
+            .select("rating, total_games, total_wins, laundry_count")
+            .eq("id", member.user_id)
+            .single();
 
-          for (const member of teamMembers) {
-            if (!member.user_id) {
-              console.warn("⚠️ member.user_id가 존재하지 않습니다!", member);
-              continue;
-            }
-
-            const ratingChange = calculateInternalRatingChange(
-              teamRank,
-              member.pick_order,
-              totalTeamSize
+          if (userData) {
+            const newRating = Math.max(
+              1000,
+              (userData.rating || 1500) + ratingChange
             );
+            const isWin = teamRank === 1 ? 1 : 0;
+            const isLaundry =
+              selectedUser && selectedUser.user_id === member.user_id ? 1 : 0;
 
-            const { data: userData, error: userFetchError } = await supabase
+            await supabase
               .from("users")
-              .select("rating, total_games, total_wins, laundry_count")
-              .eq("id", member.user_id)
-              .single();
-
-            console.log(
-              `📌 유저 ID(${member.user_id}) 조회 결과:`,
-              userData,
-              "에러:",
-              userFetchError
-            );
-
-            if (userData) {
-              const newRating = Math.max(
-                1000,
-                (userData.rating || 1500) + ratingChange
-              );
-              const isWin = teamRank === 1 ? 1 : 0;
-              const isLaundry =
-                selectedUser && selectedUser.user_id === member.user_id ? 1 : 0;
-
-              const { error: userUpdateError } = await supabase
-                .from("users")
-                .update({
-                  rating: newRating,
-                  total_games: (userData.total_games || 0) + 1,
-                  total_wins: (userData.total_wins || 0) + isWin,
-                  laundry_count: (userData.laundry_count || 0) + isLaundry,
-                })
-                .eq("id", member.user_id);
-
-              console.log(
-                `📌 유저 ID(${member.user_id}) 업데이트 에러 여부:`,
-                userUpdateError
-              );
-            }
+              .update({
+                rating: newRating,
+                total_games: (userData.total_games || 0) + 1,
+                total_wins: (userData.total_wins || 0) + isWin,
+                laundry_count: (userData.laundry_count || 0) + isLaundry,
+              })
+              .eq("id", member.user_id);
           }
         }
       }
 
       setSaved(true);
       alert(
-        `오늘의 경기 결과와 빨래 당번 [${laundryPerson}] 님이 DB에 완벽히 저장되었으며, 콘솔창에 디버깅 로그가 출력되었습니다!`
+        `오늘의 경기 결과와 빨래 당번 [${laundryPerson}] 님이 DB에 완벽히 저장되었으며, 모든 멤버의 전적이 갱신되었습니다! 🧺🏆`
       );
     } catch (error) {
       console.error("결과 저장 중 에러 발생:", error);
