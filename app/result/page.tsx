@@ -203,8 +203,6 @@ export default function ResultPage() {
         .select("id, team_name")
         .eq("session_id", sessionId);
 
-      console.log("DB에서 가져온 팀 목록:", teamData); // 👈 콘솔 확인용
-
       if (teamData && teamData.length > 0) {
         const teamMap: Record<string, string> = {};
         teamData.forEach((t) => {
@@ -236,14 +234,9 @@ export default function ResultPage() {
           rankMap[teamName] = idx + 1; // 1등, 2등, 3등
         });
 
-        console.log("계산된 순위 맵(rankMap):", rankMap); // 👈 콘솔 확인용
-
         // 5. teams 테이블에 rank 저장
         for (const [teamName, rank] of Object.entries(rankMap)) {
           const teamId = teamMap[teamName];
-          console.log(
-            `팀 ${teamName} (ID: ${teamId})에 순위 ${rank} 저장 시도`
-          );
 
           if (teamId) {
             const { error: updateError } = await supabase

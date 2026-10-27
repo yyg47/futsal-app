@@ -44,21 +44,31 @@ export default function MyStatsPage() {
       .eq("id", user.id)
       .single();
 
-    // 2. 유저가 속했던 팀들의 순위(rank) 가져오기
-    const { data: memberTeams } = await supabase
+    // 2. 유저가 속했던 팀들의 ID를 먼저 가져온 뒤 팀 순위 조회
+    let avgRank: number | string = "-";
+
+    const { data: memberTeams, error: memberError } = await supabase
       .from("team_members")
-      .select(`teams ( rank )`)
+      .select("team_id")
       .eq("user_id", user.id);
 
-    let avgRank: number | string = "-";
-    if (memberTeams && memberTeams.length > 0) {
-      const ranks = memberTeams
-        .map((item: any) => item.teams?.rank)
-        .filter((r: any) => r !== null && r !== undefined);
+    if (!memberError && memberTeams && memberTeams.length > 0) {
+      const teamIds = memberTeams.map((m) => m.team_id);
 
-      if (ranks.length > 0) {
-        const sum = ranks.reduce((acc: number, cur: number) => acc + cur, 0);
-        avgRank = Number((sum / ranks.length).toFixed(1)); // 소수점 첫째 자리 평균
+      const { data: teamData, error: teamError } = await supabase
+        .from("teams")
+        .select("rank")
+        .in("id", teamIds);
+
+      if (!teamError && teamData && teamData.length > 0) {
+        const ranks = teamData
+          .map((t: any) => t.rank)
+          .filter((r: any) => r !== null && r !== undefined);
+
+        if (ranks.length > 0) {
+          const sum = ranks.reduce((acc: number, cur: number) => acc + cur, 0);
+          avgRank = Number((sum / ranks.length).toFixed(1));
+        }
       }
     }
 
