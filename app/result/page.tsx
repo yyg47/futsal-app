@@ -33,6 +33,36 @@ interface Match {
   winner: string;
 }
 
+// 팀 내 픽 순서 보정이 반영된 Hidden Elo 계산 함수
+function calculateInternalRatingChange(
+  teamRank: number, // 팀 순위 (1, 2, 3)
+  pickOrder: number, // 팀 내 지명 순서 (1 = 1순위 에이스, 4 = 막픽 등)
+  totalTeamSize: number // 해당 팀의 총 인원수
+): number {
+  let baseDelta = 0;
+  if (teamRank === 1) baseDelta = 15;
+  else if (teamRank === 2) baseDelta = 0;
+  else if (teamRank === 3) baseDelta = -15;
+
+  const reverseIndex = totalTeamSize - pickOrder; // 후순위일수록 큰 값
+
+  if (teamRank === 1) {
+    // 🏆 1등 팀: 후순위(막픽)가 팀을 캐리했을 때의 대이변 보너스
+    const underdogCarryBonus = reverseIndex * 3.5;
+    return Math.round(baseDelta + underdogCarryBonus);
+  }
+
+  if (teamRank === 3) {
+    // 💀 3등 팀: 1순위(에이스)에게 책임 감점을, 막픽에게 방어권 부여
+    const acePenalty = pickOrder === 1 ? -10 : 0;
+    const underdogDefense = reverseIndex * 2;
+    return Math.round(baseDelta + acePenalty + underdogDefense);
+  }
+
+  // 🥈 2등 팀 (중위권)
+  return Math.round(baseDelta + (reverseIndex - totalTeamSize / 2) * 2);
+}
+
 export default function ResultPage() {
   const [attendees, setAttendees] = useState<Attendee[]>([]);
 
@@ -156,6 +186,7 @@ export default function ResultPage() {
 
       const sessionId = sessionData.id;
 
+      // 1. 빨래 당번 유저 찾기
       const selectedUser = attendees.find(
         (a) => a.users?.name === laundryPerson
       );
@@ -166,6 +197,7 @@ export default function ResultPage() {
           .eq("id", sessionId);
       }
 
+      // 2. 팀 정보 가져오기 (team_id, team_name)
       const { data: teamData } = await supabase
         .from("teams")
         .select("id, team_name")
@@ -177,6 +209,7 @@ export default function ResultPage() {
           teamMap[t.team_name] = t.id;
         });
 
+        // 3. 매치 결과 저장
         for (let i = 0; i < matches.length; i++) {
           const m = matches[i];
           if (!m.winner) continue;
@@ -194,11 +227,70 @@ export default function ResultPage() {
             match_order: m.id,
           });
         }
+
+        // 💡 4. 팀별 최종 순위(rankMap) 생성 (sortedTeams 기준)
+        const rankMap: Record<string, number> = {};
+        sortedTeams.forEach(([teamName], idx) => {
+          rankMap[teamName] = idx + 1; // 1등, 2등, 3등
+        });
+
+        // 💡 5. 각 팀 멤버들의 픽 순서와 성적을 바탕으로 백엔드 레이팅 & 빨래 횟수 자동 업데이트
+        for (const t of teamData) {
+          const teamRank = rankMap[t.team_name] || 2; // 순위 기본값 2등
+
+          // 해당 팀에 속한 멤버들과 픽 순서 가져오기
+          const { data: teamMembers } = await supabase
+            .from("team_members")
+            .select("user_id, pick_order")
+            .eq("team_id", t.id)
+            .order("pick_order", { ascending: true });
+
+          if (!teamMembers) continue;
+          const totalTeamSize = teamMembers.length;
+
+          for (const member of teamMembers) {
+            // 픽 순서 보정 레이팅 변화량 계산
+            const ratingChange = calculateInternalRatingChange(
+              teamRank,
+              member.pick_order,
+              totalTeamSize
+            );
+
+            // 기존 유저 데이터 조회
+            const { data: userData } = await supabase
+              .from("users")
+              .select("rating, total_games, total_wins, laundry_count")
+              .eq("id", member.user_id)
+              .single();
+
+            if (userData) {
+              const newRating = Math.max(
+                1000,
+                (userData.rating || 1500) + ratingChange
+              );
+              const isWin = teamRank === 1 ? 1 : 0;
+              // 오늘 빨래 당번인 경우 laundry_count + 1
+              const isLaundry =
+                selectedUser && selectedUser.user_id === member.user_id ? 1 : 0;
+
+              // DB에 숨겨진 레이팅, 총 경기수, 승리수, 빨래횟수 반영
+              await supabase
+                .from("users")
+                .update({
+                  rating: newRating,
+                  total_games: (userData.total_games || 0) + 1,
+                  total_wins: (userData.total_wins || 0) + isWin,
+                  laundry_count: (userData.laundry_count || 0) + isLaundry,
+                })
+                .eq("id", member.user_id);
+            }
+          }
+        }
       }
 
       setSaved(true);
       alert(
-        `오늘의 경기 결과와 빨래 당번 [${laundryPerson}] 님이 DB에 완벽히 저장되었습니다! 🧺🏆`
+        `오늘의 경기 결과와 빨래 당번 [${laundryPerson}] 님이 DB에 완벽히 저장되었으며, 백단 레이팅과 빨래 통계가 조용히 갱신되었습니다! 🧺🏆`
       );
     } catch (error) {
       console.error("결과 저장 중 에러 발생:", error);
