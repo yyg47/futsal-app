@@ -708,7 +708,6 @@
 //     </main>
 //   );
 // }
-
 "use client";
 import { useState, useEffect } from "react";
 import { createClient } from "@supabase/supabase-js";
@@ -731,16 +730,12 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-// 💡 방장 유저 ID 목록 (본인의 Supabase User ID 지정)
-const ADMIN_USER_IDS = [
-  "1e749510-834a-48c3-afba-e373a992eef2",
-  "643e4072-716f-4b98-96b2-139c0c7835b6",
-];
-
 interface User {
   id: string;
   name: string;
   phone?: string;
+  isAdmin?: boolean;
+  role?: string;
 }
 
 interface Attendee {
@@ -762,10 +757,24 @@ export default function FutsalHome() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange(async (_event, session) => {
       const user = session?.user ?? null;
       setCurrentUser(user);
-      setIsAdmin(!!user && ADMIN_USER_IDS.includes(user.id));
+
+      if (user) {
+        // 💡 users 테이블에서 isAdmin 또는 role 확인
+        const { data: userData } = await supabase
+          .from("users")
+          .select("isAdmin, role")
+          .eq("id", user.id)
+          .single();
+
+        setIsAdmin(
+          !!userData && (userData.isAdmin === true || userData.role === "admin")
+        );
+      } else {
+        setIsAdmin(false);
+      }
 
       if (user && currentSessionId) {
         fetchAttendees(currentSessionId);
@@ -777,7 +786,7 @@ export default function FutsalHome() {
     };
   }, [currentSessionId]);
 
-  // 💡 실시간 명단 동기화 (방장이 명단을 지우거나 추가할 때 자동 업데이트)
+  // 실시간 명단 동기화
   useEffect(() => {
     if (!currentSessionId) return;
 
@@ -810,9 +819,17 @@ export default function FutsalHome() {
     const user = data.session?.user ?? null;
     setCurrentUser(user);
 
-    // 로그인한 유저가 방장 명단에 있는지 체크
-    if (user && ADMIN_USER_IDS.includes(user.id)) {
-      setIsAdmin(true);
+    if (user) {
+      // 💡 로그인한 유저의 관리자 여부를 users 테이블에서 조회
+      const { data: userData } = await supabase
+        .from("users")
+        .select("isAdmin, role")
+        .eq("id", user.id)
+        .single();
+
+      setIsAdmin(
+        !!userData && (userData.isAdmin === true || userData.role === "admin")
+      );
     } else {
       setIsAdmin(false);
     }
@@ -962,7 +979,6 @@ export default function FutsalHome() {
       </div>
 
       {/* 네비게이션 */}
-      {/* 빠른 이동 네비게이션 (3개 그리드) */}
       <div className="grid grid-cols-3 gap-2 mb-6">
         <Link
           href="/draft"
