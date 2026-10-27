@@ -44,7 +44,9 @@ export default function MyStatsPage() {
       .eq("id", user.id)
       .single();
 
-    // 2. 유저가 속했던 팀들의 ID를 먼저 가져온 뒤 팀 순위 조회
+    console.log("📌 [Stats] 내 유저 정보:", userData);
+
+    // 2. 유저가 속했던 팀 ID 조회
     let avgRank: number | string = "-";
 
     const { data: memberTeams, error: memberError } = await supabase
@@ -52,18 +54,36 @@ export default function MyStatsPage() {
       .select("team_id")
       .eq("user_id", user.id);
 
+    console.log(
+      "📌 [Stats] 내가 속한 팀 멤버 매핑(memberTeams):",
+      memberTeams,
+      "에러:",
+      memberError
+    );
+
     if (!memberError && memberTeams && memberTeams.length > 0) {
       const teamIds = memberTeams.map((m) => m.team_id);
+      console.log("📌 [Stats] 조회할 팀 ID 목록:", teamIds);
 
+      // 3. 팀 테이블에서 rank 조회
       const { data: teamData, error: teamError } = await supabase
         .from("teams")
-        .select("rank")
+        .select("id, rank, team_name")
         .in("id", teamIds);
+
+      console.log(
+        "📌 [Stats] 팀 테이블 조회 결과(teamData):",
+        teamData,
+        "에러:",
+        teamError
+      );
 
       if (!teamError && teamData && teamData.length > 0) {
         const ranks = teamData
           .map((t: any) => t.rank)
           .filter((r: any) => r !== null && r !== undefined);
+
+        console.log("📌 [Stats] 필터링된 유효 순위 배열(ranks):", ranks);
 
         if (ranks.length > 0) {
           const sum = ranks.reduce((acc: number, cur: number) => acc + cur, 0);
@@ -71,6 +91,8 @@ export default function MyStatsPage() {
         }
       }
     }
+
+    console.log("📌 [Stats] 최종 계산된 avgRank:", avgRank);
 
     if (userData) {
       setUserStat({
