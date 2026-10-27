@@ -165,7 +165,7 @@ export default function ResultPage() {
     (a, b) => b[1].points - a[1].points
   );
 
-  cconst saveLaundryDuty = async () => {
+  const saveLaundryDuty = async () => {
     if (!laundryPerson) {
       alert("오늘의 빨래 당번을 선택해주세요!");
       return;
