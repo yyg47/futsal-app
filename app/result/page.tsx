@@ -165,7 +165,7 @@ export default function ResultPage() {
     (a, b) => b[1].points - a[1].points
   );
 
-  const saveLaundryDuty = async () => {
+  cconst saveLaundryDuty = async () => {
     if (!laundryPerson) {
       alert("오늘의 빨래 당번을 선택해주세요!");
       return;
@@ -228,13 +228,21 @@ export default function ResultPage() {
           });
         }
 
-        // 💡 4. 팀별 최종 순위(rankMap) 생성 (sortedTeams 기준)
+        // 4. 팀별 최종 순위(rankMap) 생성
         const rankMap: Record<string, number> = {};
         sortedTeams.forEach(([teamName], idx) => {
           rankMap[teamName] = idx + 1; // 1등, 2등, 3등
         });
 
-        // 💡 5. 각 팀 멤버들의 픽 순서와 성적을 바탕으로 백엔드 레이팅 & 빨래 횟수 자동 업데이트
+        // 💡 [핵심 추가] teams 테이블에 실제 rank 값을 저장해야 my-stats에서 평균 순위가 계산됩니다!
+        for (const [teamName, rank] of Object.entries(rankMap)) {
+          const teamId = teamMap[teamName];
+          if (teamId) {
+            await supabase.from("teams").update({ rank }).eq("id", teamId);
+          }
+        }
+
+        // 5. 각 팀 멤버들의 픽 순서와 성적을 바탕으로 백엔드 레이팅 & 빨래 횟수 자동 업데이트
         for (const t of teamData) {
           const teamRank = rankMap[t.team_name] || 2; // 순위 기본값 2등
 

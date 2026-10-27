@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { createClient } from "@supabase/supabase-js";
-import { Award, ArrowLeft, Trophy, Droplets, TrendingUp } from "lucide-react";
+import { ArrowLeft, Trophy, Droplets, TrendingUp } from "lucide-react";
 import Link from "next/link";
 
 const supabase = createClient(
@@ -12,7 +12,8 @@ const supabase = createClient(
 interface UserStat {
   name: string;
   laundry_count: number;
-  avg_rank?: number;
+  total_games: number;
+  avg_rank?: number | string;
 }
 
 export default function MyStatsPage() {
@@ -36,25 +37,35 @@ export default function MyStatsPage() {
 
     setCurrentUser(user);
 
-    // 기존: .select("name, laundry_count")
-    // 수정: total_games도 함께 가져오도록 추가
+    // 1. 기본 유저 정보 가져오기
     const { data: userData } = await supabase
       .from("users")
       .select("name, laundry_count, total_games")
       .eq("id", user.id)
       .single();
 
-    if (userData) {
-      setUserStat({
-        ...userData,
-        avg_rank: userData.total_games > 0 ? 2.1 : 0, // 이제 에러 없이 정상 작동합니다!
-      });
+    // 2. 유저가 속했던 팀들의 순위(rank) 가져오기
+    const { data: memberTeams } = await supabase
+      .from("team_members")
+      .select(`teams ( rank )`)
+      .eq("user_id", user.id);
+
+    let avgRank: number | string = "-";
+    if (memberTeams && memberTeams.length > 0) {
+      const ranks = memberTeams
+        .map((item: any) => item.teams?.rank)
+        .filter((r: any) => r !== null && r !== undefined);
+
+      if (ranks.length > 0) {
+        const sum = ranks.reduce((acc: number, cur: number) => acc + cur, 0);
+        avgRank = Number((sum / ranks.length).toFixed(1)); // 소수점 첫째 자리 평균
+      }
     }
 
     if (userData) {
       setUserStat({
         ...userData,
-        avg_rank: userData.total_games > 0 ? 2.1 : 0, // 경기가 없으면 0 또는 -로 표시
+        avg_rank: avgRank,
       });
     }
 
@@ -85,9 +96,10 @@ export default function MyStatsPage() {
     );
   }
 
+  const hasPlayed = userStat && userStat.avg_rank !== "-";
+
   return (
     <main className="min-h-screen bg-gray-50 p-4 max-w-md mx-auto pb-28">
-      {/* 상단 네비게이션 */}
       <div className="flex items-center justify-between mb-6">
         <Link
           href="/"
@@ -99,7 +111,6 @@ export default function MyStatsPage() {
         <div className="w-16"></div>
       </div>
 
-      {/* 요약 메시지 카드 */}
       <div className="bg-emerald-600 text-white p-6 rounded-2xl shadow-md mb-6 relative overflow-hidden">
         <div className="absolute right-4 bottom-4 opacity-10">
           <Trophy size={100} />
@@ -109,10 +120,8 @@ export default function MyStatsPage() {
         </span>
         <h2 className="text-xl font-bold mt-3 leading-snug">
           {userStat?.name || "플레이어"} 님의 팀은 평균{" "}
-          <span className="text-2xl font-black text-gray-800">
-            {userStat?.avg_rank && userStat.avg_rank > 0
-              ? userStat.avg_rank
-              : "-"}
+          <span className="text-amber-300 font-black">
+            {hasPlayed ? `${userStat?.avg_rank}등` : "-"}
           </span>
           을 하셨어요!
         </h2>
@@ -125,7 +134,6 @@ export default function MyStatsPage() {
         </p>
       </div>
 
-      {/* 상세 통계 카드 그리드 */}
       <div className="grid grid-cols-2 gap-3 mb-6">
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between">
           <div className="flex items-center gap-1 text-xs font-bold text-gray-400 mb-2">
@@ -133,7 +141,7 @@ export default function MyStatsPage() {
           </div>
           <div>
             <span className="text-2xl font-black text-gray-800">
-              {userStat?.avg_rank || "-"}
+              {userStat?.avg_rank ?? "-"}
             </span>
             <span className="text-xs text-gray-500 font-semibold ml-1">등</span>
           </div>
