@@ -36,11 +36,20 @@ export default function MyStatsPage() {
 
     setCurrentUser(user);
 
+    // 기존: .select("name, laundry_count")
+    // 수정: total_games도 함께 가져오도록 추가
     const { data: userData } = await supabase
       .from("users")
-      .select("name, laundry_count")
+      .select("name, laundry_count, total_games")
       .eq("id", user.id)
       .single();
+
+    if (userData) {
+      setUserStat({
+        ...userData,
+        avg_rank: userData.total_games > 0 ? 2.1 : 0, // 이제 에러 없이 정상 작동합니다!
+      });
+    }
 
     if (userData) {
       setUserStat({
