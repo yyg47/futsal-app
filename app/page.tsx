@@ -708,6 +708,7 @@
 //     </main>
 //   );
 // }
+
 "use client";
 import { useState, useEffect } from "react";
 import { createClient } from "@supabase/supabase-js";
@@ -762,7 +763,6 @@ export default function FutsalHome() {
       setCurrentUser(user);
 
       if (user) {
-        // 💡 DB의 실제 컬럼명인 role과 is_admin으로 관리자 체크
         const { data: userData } = await supabase
           .from("users")
           .select("role, is_admin")
@@ -821,7 +821,6 @@ export default function FutsalHome() {
     setCurrentUser(user);
 
     if (user) {
-      // 💡 로그인한 유저의 관리자 여부를 DB에서 조회
       const { data: userData } = await supabase
         .from("users")
         .select("role, is_admin")
@@ -835,7 +834,6 @@ export default function FutsalHome() {
       setIsAdmin(false);
     }
 
-    // 가장 최근 세션 가져오기
     const { data: sessionData } = await supabase
       .from("sessions")
       .select("id")
@@ -936,9 +934,6 @@ export default function FutsalHome() {
     }
   };
 
-  // 관리자 여부에 따라 그리드 칸 수 동적 조절
-  const navGridClass = isAdmin ? "grid-cols-3" : "grid-cols-2";
-
   return (
     <main className="min-h-screen bg-gray-50 p-4 max-w-md mx-auto pb-28">
       {/* 상단 모임 정보 카드 */}
@@ -982,9 +977,9 @@ export default function FutsalHome() {
         </div>
       </div>
 
-      {/* 네비게이션 (관리자일 때만 디지털 드래프트 노출) */}
-      <div className={`grid ${navGridClass} gap-2 mb-6`}>
-        {isAdmin && (
+      {/* 네비게이션 (3개 그리드 유지, 일반 유저는 드래프트와 결과 버튼 회색 처리 및 비활성화) */}
+      <div className="grid grid-cols-3 gap-2 mb-6">
+        {isAdmin ? (
           <Link
             href="/draft"
             className="bg-white hover:bg-emerald-50 border border-emerald-200 p-3 rounded-2xl shadow-sm text-center flex flex-col items-center justify-center transition-all"
@@ -994,17 +989,35 @@ export default function FutsalHome() {
               디지털 드래프트
             </span>
           </Link>
+        ) : (
+          <div
+            onClick={() => alert("관리자만 접근할 수 있는 메뉴입니다! 🚫")}
+            className="bg-gray-100 border border-gray-200 p-3 rounded-2xl shadow-sm text-center flex flex-col items-center justify-center cursor-pointer text-gray-400"
+          >
+            <Play size={18} className="mb-1" />
+            <span className="font-bold text-[11px]">디지털 드래프트</span>
+          </div>
         )}
 
-        <Link
-          href="/result"
-          className="bg-white hover:bg-emerald-50 border border-emerald-200 p-3 rounded-2xl shadow-sm text-center flex flex-col items-center justify-center transition-all"
-        >
-          <Award size={18} className="text-emerald-600 mb-1" />
-          <span className="font-bold text-[11px] text-gray-800">
-            경기 결과 & 빨래
-          </span>
-        </Link>
+        {isAdmin ? (
+          <Link
+            href="/result"
+            className="bg-white hover:bg-emerald-50 border border-emerald-200 p-3 rounded-2xl shadow-sm text-center flex flex-col items-center justify-center transition-all"
+          >
+            <Award size={18} className="text-emerald-600 mb-1" />
+            <span className="font-bold text-[11px] text-gray-800">
+              경기 결과 & 빨래
+            </span>
+          </Link>
+        ) : (
+          <div
+            onClick={() => alert("관리자만 접근할 수 있는 메뉴입니다! 🚫")}
+            className="bg-gray-100 border border-gray-200 p-3 rounded-2xl shadow-sm text-center flex flex-col items-center justify-center cursor-pointer text-gray-400"
+          >
+            <Award size={18} className="mb-1" />
+            <span className="font-bold text-[11px]">경기 결과 & 빨래</span>
+          </div>
+        )}
 
         {currentUser ? (
           <Link
