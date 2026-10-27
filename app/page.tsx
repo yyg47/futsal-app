@@ -980,15 +980,18 @@ export default function FutsalHome() {
 
       {/* 네비게이션 */}
       <div className="grid grid-cols-3 gap-2 mb-6">
-        <Link
-          href="/draft"
-          className="bg-white hover:bg-emerald-50 border border-emerald-200 p-3 rounded-2xl shadow-sm text-center flex flex-col items-center justify-center transition-all"
-        >
-          <Play size={18} className="text-emerald-600 mb-1" />
-          <span className="font-bold text-[11px] text-gray-800">
-            디지털 드래프트
-          </span>
-        </Link>
+        {/* 관리자에게만 보이는 디지털 드래프트 버튼 */}
+        {isAdmin && (
+          <Link
+            href="/draft"
+            className="bg-white hover:bg-emerald-50 border border-emerald-200 p-3 rounded-2xl shadow-sm text-center flex flex-col items-center justify-center transition-all"
+          >
+            <Play size={18} className="text-emerald-600 mb-1" />
+            <span className="font-bold text-[11px] text-gray-800">
+              디지털 드래프트
+            </span>
+          </Link>
+        )}
 
         <Link
           href="/result"
