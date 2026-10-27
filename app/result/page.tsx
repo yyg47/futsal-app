@@ -197,11 +197,13 @@ export default function ResultPage() {
           .eq("id", sessionId);
       }
 
-      // 2. 팀 정보 가져오기 (team_id, team_name)
+      // 2. 팀 정보 가져오기
       const { data: teamData } = await supabase
         .from("teams")
         .select("id, team_name")
         .eq("session_id", sessionId);
+
+      console.log("DB에서 가져온 팀 목록:", teamData); // 👈 콘솔 확인용
 
       if (teamData && teamData.length > 0) {
         const teamMap: Record<string, string> = {};
@@ -234,19 +236,38 @@ export default function ResultPage() {
           rankMap[teamName] = idx + 1; // 1등, 2등, 3등
         });
 
-        // 💡 [핵심 추가] teams 테이블에 실제 rank 값을 저장해야 my-stats에서 평균 순위가 계산됩니다!
+        console.log("계산된 순위 맵(rankMap):", rankMap); // 👈 콘솔 확인용
+
+        // 5. teams 테이블에 rank 저장
         for (const [teamName, rank] of Object.entries(rankMap)) {
           const teamId = teamMap[teamName];
+          console.log(
+            `팀 ${teamName} (ID: ${teamId})에 순위 ${rank} 저장 시도`
+          );
+
           if (teamId) {
-            await supabase.from("teams").update({ rank }).eq("id", teamId);
+            const { error: updateError } = await supabase
+              .from("teams")
+              .update({ rank })
+              .eq("id", teamId);
+
+            if (updateError) {
+              console.error(
+                `팀 ${teamName} 순위 업데이트 에러:`,
+                updateError.message
+              );
+            }
+          } else {
+            console.warn(
+              `⚠️ 팀 이름 매칭 실패: ${teamName}에 해당하는 팀 ID를 찾을 수 없습니다.`
+            );
           }
         }
 
-        // 5. 각 팀 멤버들의 픽 순서와 성적을 바탕으로 백엔드 레이팅 & 빨래 횟수 자동 업데이트
+        // 6. 각 팀 멤버들의 픽 순서 보정 레이팅 및 빨래 횟수 자동 업데이트
         for (const t of teamData) {
-          const teamRank = rankMap[t.team_name] || 2; // 순위 기본값 2등
+          const teamRank = rankMap[t.team_name] || 2;
 
-          // 해당 팀에 속한 멤버들과 픽 순서 가져오기
           const { data: teamMembers } = await supabase
             .from("team_members")
             .select("user_id, pick_order")
@@ -257,14 +278,12 @@ export default function ResultPage() {
           const totalTeamSize = teamMembers.length;
 
           for (const member of teamMembers) {
-            // 픽 순서 보정 레이팅 변화량 계산
             const ratingChange = calculateInternalRatingChange(
               teamRank,
               member.pick_order,
               totalTeamSize
             );
 
-            // 기존 유저 데이터 조회
             const { data: userData } = await supabase
               .from("users")
               .select("rating, total_games, total_wins, laundry_count")
@@ -277,11 +296,9 @@ export default function ResultPage() {
                 (userData.rating || 1500) + ratingChange
               );
               const isWin = teamRank === 1 ? 1 : 0;
-              // 오늘 빨래 당번인 경우 laundry_count + 1
               const isLaundry =
                 selectedUser && selectedUser.user_id === member.user_id ? 1 : 0;
 
-              // DB에 숨겨진 레이팅, 총 경기수, 승리수, 빨래횟수 반영
               await supabase
                 .from("users")
                 .update({
@@ -298,7 +315,7 @@ export default function ResultPage() {
 
       setSaved(true);
       alert(
-        `오늘의 경기 결과와 빨래 당번 [${laundryPerson}] 님이 DB에 완벽히 저장되었으며, 백단 레이팅과 빨래 통계가 조용히 갱신되었습니다! 🧺🏆`
+        `오늘의 경기 결과와 빨래 당번 [${laundryPerson}] 님이 DB에 완벽히 저장되었습니다! 🧺🏆`
       );
     } catch (error) {
       console.error("결과 저장 중 에러 발생:", error);
