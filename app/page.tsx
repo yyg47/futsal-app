@@ -722,6 +722,7 @@ import {
   Settings,
   LogIn,
   LogOut,
+  Trophy,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -961,25 +962,47 @@ export default function FutsalHome() {
       </div>
 
       {/* 네비게이션 */}
-      <div className="grid grid-cols-2 gap-2 mb-6">
+      {/* 빠른 이동 네비게이션 (3개 그리드) */}
+      <div className="grid grid-cols-3 gap-2 mb-6">
         <Link
           href="/draft"
           className="bg-white hover:bg-emerald-50 border border-emerald-200 p-3 rounded-2xl shadow-sm text-center flex flex-col items-center justify-center transition-all"
         >
-          <Play size={20} className="text-emerald-600 mb-1" />
-          <span className="font-bold text-xs text-gray-800">
-            디지털 드래프트 ⚡
+          <Play size={18} className="text-emerald-600 mb-1" />
+          <span className="font-bold text-[11px] text-gray-800">
+            디지털 드래프트
           </span>
         </Link>
+
         <Link
           href="/result"
           className="bg-white hover:bg-emerald-50 border border-emerald-200 p-3 rounded-2xl shadow-sm text-center flex flex-col items-center justify-center transition-all"
         >
-          <Award size={20} className="text-emerald-600 mb-1" />
-          <span className="font-bold text-xs text-gray-800">
-            경기 결과 & 빨래 🏆
+          <Award size={18} className="text-emerald-600 mb-1" />
+          <span className="font-bold text-[11px] text-gray-800">
+            경기 결과 & 빨래
           </span>
         </Link>
+
+        {currentUser ? (
+          <Link
+            href="/my-stats"
+            className="bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 p-3 rounded-2xl shadow-sm text-center flex flex-col items-center justify-center transition-all"
+          >
+            <Trophy size={18} className="text-emerald-700 mb-1" />
+            <span className="font-bold text-[11px] text-emerald-900">
+              내 전적보기 📊
+            </span>
+          </Link>
+        ) : (
+          <div
+            onClick={() => alert("로그인 후 이용 가능합니다!")}
+            className="bg-gray-100 border border-gray-200 p-3 rounded-2xl shadow-sm text-center flex flex-col items-center justify-center cursor-pointer text-gray-400"
+          >
+            <Trophy size={18} className="mb-1" />
+            <span className="font-bold text-[11px]">내 전적보기</span>
+          </div>
+        )}
       </div>
 
       {/* 참가 신청 명단 */}
