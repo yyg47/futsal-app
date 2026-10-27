@@ -478,7 +478,7 @@ export default function DraftPage() {
     const { data: sessionData } = await supabase
       .from("sessions")
       .select("id, draft_status")
-      .order("date", { ascending: false })
+      .order("created_at", { ascending: false }) // date -> created_at으로 통일
       .limit(1)
       .single();
 
@@ -600,6 +600,17 @@ export default function DraftPage() {
         .from("sessions")
         .update({ draft_status: "DRAFTING" })
         .eq("id", currentSessionId);
+
+      // 💡 [핵심 추가] 주장을 team_members 테이블에도 안전하게 등록 (pick_order: 1)
+      for (const team of data) {
+        if (team.captain_id) {
+          await supabase.from("team_members").insert({
+            team_id: team.id,
+            user_id: team.captain_id,
+            pick_order: 1, // 주장은 1순위(에이스)로 처리
+          });
+        }
+      }
 
       setTeams(data);
       const initialMembers: { [key: string]: Attendee[] } = {};

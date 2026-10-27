@@ -46,25 +46,45 @@ export default function MyStatsPage() {
 
     console.log("📌 [Stats] 내 유저 정보:", userData);
 
-    // 2. 유저가 속했던 팀 ID 조회
+    // 2. 유저가 속했던 팀 ID 조회 (team_members + teams.captain_id 모두 포용)
     let avgRank: number | string = "-";
 
-    const { data: memberTeams, error: memberError } = await supabase
+    // 2-1. team_members에서 팀 ID 가져오기
+    const { data: memberTeams } = await supabase
       .from("team_members")
       .select("team_id")
       .eq("user_id", user.id);
 
-    console.log(
-      "📌 [Stats] 내가 속한 팀 멤버 매핑(memberTeams):",
-      memberTeams,
-      "에러:",
-      memberError
-    );
+    // 2-2. teams에서 주장이었던 팀 ID 가져오기
+    const { data: captainTeams } = await supabase
+      .from("teams")
+      .select("id")
+      .eq("captain_id", user.id);
 
-    if (!memberError && memberTeams && memberTeams.length > 0) {
-      const teamIds = memberTeams.map((m) => m.team_id);
-      console.log("📌 [Stats] 조회할 팀 ID 목록:", teamIds);
+    // 중복 제거를 위한 Set 활용
+    const teamIdSet = new Set<string>();
+    memberTeams?.forEach((m) => teamIdSet.add(m.team_id));
+    captainTeams?.forEach((t) => teamIdSet.add(t.id));
 
+    const teamIds = Array.from(teamIdSet);
+
+    if (teamIds.length > 0) {
+      const { data: teamData, error: teamError } = await supabase
+        .from("teams")
+        .select("id, rank, team_name")
+        .in("id", teamIds);
+
+      if (!teamError && teamData && teamData.length > 0) {
+        const ranks = teamData
+          .map((t: any) => t.rank)
+          .filter((r: any) => r !== null && r !== undefined);
+
+        if (ranks.length > 0) {
+          const sum = ranks.reduce((acc: number, cur: number) => acc + cur, 0);
+          avgRank = Number((sum / ranks.length).toFixed(1));
+        }
+      }
+    }
       // 3. 팀 테이블에서 rank 조회
       const { data: teamData, error: teamError } = await supabase
         .from("teams")
