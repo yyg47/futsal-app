@@ -734,8 +734,8 @@ interface User {
   id: string;
   name: string;
   phone?: string;
-  isAdmin?: boolean;
   role?: string;
+  is_admin?: boolean;
 }
 
 interface Attendee {
@@ -762,15 +762,16 @@ export default function FutsalHome() {
       setCurrentUser(user);
 
       if (user) {
-        // 💡 users 테이블에서 isAdmin 또는 role 확인
+        // 💡 DB의 실제 컬럼명인 role과 is_admin으로 관리자 체크
         const { data: userData } = await supabase
           .from("users")
-          .select("isAdmin, role")
+          .select("role, is_admin")
           .eq("id", user.id)
           .single();
 
         setIsAdmin(
-          !!userData && (userData.isAdmin === true || userData.role === "admin")
+          !!userData &&
+            (userData.role === "ADMIN" || userData.is_admin === true)
         );
       } else {
         setIsAdmin(false);
@@ -820,15 +821,15 @@ export default function FutsalHome() {
     setCurrentUser(user);
 
     if (user) {
-      // 💡 로그인한 유저의 관리자 여부를 users 테이블에서 조회
+      // 💡 로그인한 유저의 관리자 여부를 DB에서 조회
       const { data: userData } = await supabase
         .from("users")
-        .select("isAdmin, role")
+        .select("role, is_admin")
         .eq("id", user.id)
         .single();
 
       setIsAdmin(
-        !!userData && (userData.isAdmin === true || userData.role === "admin")
+        !!userData && (userData.role === "ADMIN" || userData.is_admin === true)
       );
     } else {
       setIsAdmin(false);
@@ -935,6 +936,9 @@ export default function FutsalHome() {
     }
   };
 
+  // 관리자 여부에 따라 그리드 칸 수 동적 조절
+  const navGridClass = isAdmin ? "grid-cols-3" : "grid-cols-2";
+
   return (
     <main className="min-h-screen bg-gray-50 p-4 max-w-md mx-auto pb-28">
       {/* 상단 모임 정보 카드 */}
@@ -978,9 +982,8 @@ export default function FutsalHome() {
         </div>
       </div>
 
-      {/* 네비게이션 */}
-      <div className="grid grid-cols-3 gap-2 mb-6">
-        {/* 관리자에게만 보이는 디지털 드래프트 버튼 */}
+      {/* 네비게이션 (관리자일 때만 디지털 드래프트 노출) */}
+      <div className={`grid ${navGridClass} gap-2 mb-6`}>
         {isAdmin && (
           <Link
             href="/draft"
